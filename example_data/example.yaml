@@ -1,0 +1,5 @@
+img: example.img.tsv
+hw: example.hw.tsv
+label: example.label.tsv
+feature: example.feature.tsv
+caption: example_caption.json
