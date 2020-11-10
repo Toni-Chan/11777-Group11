@@ -1,5 +1,5 @@
 export MODEL_NAME=base-vg-labels
-export MODEL_DIR=model
+export MODEL_DIR=pretrained_models
 sudo apt-get update
 sudo apt-get install unzip
 mkdir $MODEL_DIR
