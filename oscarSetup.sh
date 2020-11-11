@@ -1,8 +1,10 @@
 # install Ananconda to /home/ubuntu/anaconda3
 # via tutorial here: https://www.digitalocean.com/community/tutorials/how-to-install-the-anaconda-python-distribution-on-ubuntu-18-04
-cd /tml
+cd /tmp
 curl -O https://repo.anaconda.com/archive/Anaconda3-2020.07-Linux-x86_64.sh
 bash Anaconda3-2020.07-Linux-x86_64.sh
+source ~/.bashrc
+conda list
 
 
 # following oscar installation guide: https://github.com/microsoft/Oscar/blob/master/INSTALL.md
@@ -12,6 +14,9 @@ conda activate oscar
 
 # install pytorch1.2
 conda install pytorch==1.2.0 torchvision==0.4.0 cudatoolkit=10.0 -c pytorch
+
+sudo rm /usr/local/cuda
+sudo ln -s /usr/local/cuda-10.0 /usr/local/cuda
 
 # install apex
 export INSTALL_DIR=/home/ubuntu
@@ -28,7 +33,12 @@ sudo apt install unzip
 
 # install oscar
 cd $INSTALL_DIR
-git clone --recursive git@github.com:microsoft/Oscar.git
+# git clone --recursive git@github.com:microsoft/Oscar.git
+git clone https://github.com/microsoft/Oscar.git
+cd Oscar
+sed -i "s/git@github\.com:/https:\/\/github\.com\//" .gitmodules
+git submodule update --init --recursive
+
 cd Oscar/coco_caption
 ./get_stanford_models.sh
 cd ..
@@ -47,11 +57,10 @@ python oscar/run_captioning.py \
     --do_train \
     --do_lower_case \
     --evaluate_during_training \
-    --add_od_labels \
     --learning_rate 0.00003 \
-    --per_gpu_train_batch_size 32 \
+    --per_gpu_train_batch_size 64 \
     --save_steps 4000 \
-    --max_steps 40000\
+    --max_steps 80000\
     --output_dir output/
 
 echo DONE
