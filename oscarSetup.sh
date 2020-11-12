@@ -51,16 +51,60 @@ unset INSTALL_DIR
 
 # image captioning on coc
 # source : https://github.com/microsoft/Oscar/blob/master/MODEL_ZOO.md
+
+
+# Fine tune train without object tags
 mkdir output
-python oscar/run_captioning.py \
+python oscar/run_captioning_finetune.py \
     --model_name_or_path pretrained_models/base-vg-labels/ep_67_588997 \
     --do_train \
     --do_lower_case \
-    --evaluate_during_training \
+    --learning_rate 0.00003 \
+    --max_seq_length 40 \
+    --per_gpu_train_batch_size 64 \
+    --save_steps 4000 \
+    --max_steps 44000\
+    --output_dir output/
+
+# eval without object tags
+python oscar/run_captioning_.py \
+    --eval_model_dir output/checkpoint-14-32000 \
+    --do_eval \
+    --max_seq_length 40 \
+    --do_lower_case
+
+
+# fine tune without image features
+python oscar/run_captioning_finetune.py \
+    --model_name_or_path pretrained_models/base-vg-labels/ep_67_588997 \
+    --do_train \
+    --do_lower_case \
+    --add_od_labels \
+    --disable_img_features \
     --learning_rate 0.00003 \
     --per_gpu_train_batch_size 64 \
     --save_steps 4000 \
-    --max_steps 80000\
-    --output_dir output/
+    --max_steps 44000\
+    --output_dir output_img/
 
+# eval without image features
+python oscar/run_captioning_finetune.py \
+    --eval_model_dir output_img/checkpoint-18-40000 \
+    --do_eval \
+    --disable_img_features \
+    --do_lower_case \
+    --add_od_labels
+
+# tmux command
+# exit from oscar virtualenv
+# start tmux session
+# start oscar virtual envt
+sudo apt-get install tmux
+tmux new -s finetune-nolabel   finetune-noimg
+tmux ls
+tmux attach -t finetune-nolabel
+tmux kill-session -t session-name
+# C+b d to detach current tmux session
+
+aws s3 sync output_img s3://mmml-idea1/finetune-no-objecttag
 echo DONE
