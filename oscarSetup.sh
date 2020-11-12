@@ -89,11 +89,21 @@ python oscar/run_captioning_finetune.py \
 
 # eval without image features
 python oscar/run_captioning_finetune.py \
-    --eval_model_dir output_img/checkpoint-18-40000 \
+    --eval_model_dir output_baseline/output/checkpoint-1-4000 \
     --do_eval \
-    --disable_img_features \
     --do_lower_case \
-    --add_od_labels
+    --add_od_labels \
+    --disable_img_features
+
+
+# inference with objectags by confidence
+python oscar/run_captioning_finetune.py \
+    --eval_model_dir output_baseline/output/checkpoint-14-32000 \
+    --do_eval \
+    --do_lower_case \
+    --add_od_labels \
+    --keep_top_percentage_tag_conf_threshold 0.3 \
+    --keep_top_percentage_tag 0.1
 
 # tmux command
 # exit from oscar virtualenv
