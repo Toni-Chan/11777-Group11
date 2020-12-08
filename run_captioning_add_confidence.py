@@ -27,7 +27,7 @@ from transformers.pytorch_transformers import AdamW, WarmupLinearSchedule, Warmu
 class CaptionTSVDataset(Dataset):
     def __init__(self, yaml_file, tokenizer=None, add_od_labels=True,
             max_img_seq_length=50, max_seq_length=70, max_seq_a_length=40, 
-            is_train=True, mask_prob=0.15, max_masked_tokens=3, **kwargs):
+            is_train=True, mask_prob=0.15, max_masked_tokens=3, add_conf=False, **kwargs):
         """Constructor.
         Args:
             yaml file with all required data (image feature, caption, labels, etc)
@@ -68,6 +68,7 @@ class CaptionTSVDataset(Dataset):
         self.image_keys = self.prepare_image_keys()
         self.key2index = self.prepare_image_key_to_index()
         self.key2captions = self.prepare_image_key_to_captions()
+        self.add_conf = add_conf
 
     def get_valid_tsv(self):
         # based on the order of file size
@@ -122,6 +123,13 @@ class CaptionTSVDataset(Dataset):
             od_labels = " ".join([l['class'] for l in label_info])
         return od_labels
 
+    def get_od_confidence(self, img_idx):
+        od_confs = None
+        if self.add_conf:
+            label_info = json.loads(self.label_tsv.seek(img_idx)[1])
+            od_confs = [l['conf'] for l in label_info]
+        return od_confs
+
     def get_caption_file_in_coco_format(self):
         cap_file = op.splitext(self.caption_file)[0] + '_coco_format.json'
         return cap_file
@@ -136,7 +144,8 @@ class CaptionTSVDataset(Dataset):
         features = self.get_image_features(img_idx)
         caption = self.get_caption(idx)
         od_labels = self.get_od_labels(img_idx)
-        example = self.tensorizer.tensorize_example(caption, features, text_b=od_labels)
+        od_confs = self.get_od_confidence(img_idx)
+        example = self.tensorizer.tensorize_example(caption, features, text_b=od_labels, confs=od_confs)
         return img_key, example
 
     def __len__(self):
@@ -215,7 +224,7 @@ class CaptionTensorizer(object):
         self._triangle_mask = torch.tril(torch.ones((self.max_seq_len, 
             self.max_seq_len), dtype=torch.long))
 
-    def tensorize_example(self, text_a, img_feat, text_b=None,
+    def tensorize_example(self, text_a, img_feat, text_b=None, confs=None,
             cls_token_segment_id=0, pad_token_segment_id=0,
             sequence_a_segment_id=0, sequence_b_segment_id=1):
         if self.is_train:
@@ -236,10 +245,21 @@ class CaptionTensorizer(object):
             segment_ids += ([pad_token_segment_id] * padding_a_len)
 
             tokens_b = self.tokenizer.tokenize(text_b)
-            if len(tokens_b) > self.max_seq_len - len(tokens) - 1:
-                tokens_b = tokens_b[: (self.max_seq_len - len(tokens) - 1)]
             tokens += tokens_b + [self.tokenizer.sep_token]
             segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1)
+
+        conf_res = None
+        if confs:
+            # add caption portion of confidence array
+            conf_res = [1] * seq_a_len
+            # pad conf_res for caption portion to keep it fixed length for better inference
+            padding_a_len = self.max_seq_a_len - seq_a_len
+            conf_res += ([0] * padding_a_len)
+            # add object tag portion of confidence array
+            conf_res += confs + [1]
+            # padd on the right to have a fix legnth
+            padding_right_len = self.max_seq_len - len(conf_res)
+            conf_res += ([0] * padding_right_len)
 
         seq_len = len(tokens)
         if self.is_train:
@@ -318,8 +338,8 @@ class CaptionTensorizer(object):
 
         if self.is_train:
             masked_ids = torch.tensor(masked_ids, dtype=torch.long)
-            return (input_ids, attention_mask, segment_ids, img_feat, masked_pos, masked_ids)
-        return (input_ids, attention_mask, segment_ids, img_feat, masked_pos)
+            return (input_ids, attention_mask, segment_ids, img_feat, masked_pos, masked_ids, conf_res)
+        return (input_ids, attention_mask, segment_ids, img_feat, masked_pos, conf_res)
 
 
 def build_dataset(yaml_file, tokenizer, args, is_train=True):
@@ -331,7 +351,7 @@ def build_dataset(yaml_file, tokenizer, args, is_train=True):
         return CaptionTSVDataset(yaml_file, tokenizer=tokenizer,
             add_od_labels=args.add_od_labels, max_img_seq_length=args.max_img_seq_length,
             max_seq_length=args.max_seq_length, max_seq_a_length=args.max_seq_a_length,
-            is_train=True, mask_prob=args.mask_prob, max_masked_tokens=args.max_masked_tokens)
+            is_train=True, mask_prob=args.mask_prob, max_masked_tokens=args.max_masked_tokens, add_conf=args.add_conf)
     if args.use_cbs:
         dataset_class = CaptionTSVDatasetWithConstraints
     else:
@@ -339,7 +359,7 @@ def build_dataset(yaml_file, tokenizer, args, is_train=True):
     return dataset_class(yaml_file, tokenizer=tokenizer,
             add_od_labels=args.add_od_labels, max_img_seq_length=args.max_img_seq_length,
             max_seq_length=args.max_seq_length, max_seq_a_length=args.max_gen_length,
-            is_train=False)
+            is_train=False, add_conf=args.add_conf)
 
 
 def save_checkpoint(model, tokenizer, args, epoch, global_step):
@@ -428,7 +448,8 @@ def train(args, train_dataset, val_dataset, model, tokenizer):
                 model.train()
                 inputs = {'input_ids': batch[0], 'attention_mask': batch[1],
                     'token_type_ids': batch[2], 'img_feats': batch[3], 
-                    'masked_pos': batch[4], 'masked_ids': batch[5]
+                    'masked_pos': batch[4], 'masked_ids': batch[5],
+                    'confs': batch[6]
                 }
                 outputs = model(**inputs)
                 loss, logits = outputs[:2]
@@ -752,6 +773,8 @@ def main():
     parser.add_argument("--drop_out", default=0.1, type=float, help="Drop out in BERT.")
     parser.add_argument("--max_img_seq_length", default=50, type=int, 
                         help="The maximum total input image sequence length.")
+    parser.add_argument("--add_conf", default=False, action="store_true",
+                        help="wether to add object tag confidence in in embedding or not")
     parser.add_argument("--img_feature_dim", default=2054, type=int, 
                         help="The Image Feature Dimension.")
     parser.add_argument("--img_feature_type", default='frcnn', type=str,
