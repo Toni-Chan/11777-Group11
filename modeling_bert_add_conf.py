@@ -157,6 +157,7 @@ class BertImgModel(BertPreTrainedModel):
         self.img_dim = config.img_feature_dim
         logger.info('BertImgModel Image Dimension: {}'.format(self.img_dim))
         self.img_feature_type = config.img_feature_type
+        self.linearConfMapBack = nn.Linear(769, 768, bias=False)
         if hasattr(config, 'use_img_layernorm'):
             self.use_img_layernorm = config.use_img_layernorm
         else:
@@ -196,12 +197,18 @@ class BertImgModel(BertPreTrainedModel):
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None,
             position_ids=None, head_mask=None, img_feats=None,
-            encoder_history_states=None):
+            encoder_history_states=None, confs=None):
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
 
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
+        
+        if not (confs is None):
+            print("conf size passed in is: "+ confs.size())
+        if confs is None:
+            confs = torch.zeros_like(input_ids)
+            print("conf size in None if is: "+ confs.size())
 
         # We create a 3D attention mask from a 2D tensor mask.
         # Sizes are [batch_size, 1, 1, to_seq_length]
@@ -241,6 +248,12 @@ class BertImgModel(BertPreTrainedModel):
 
         embedding_output = self.embeddings(input_ids, position_ids=position_ids,
                 token_type_ids=token_type_ids)
+
+        # add confidence to token_embeddings change shape from batchSize * 70 * 768 -> batchSize * 70 * 769
+        # then user linear layer map back to batchSize * 70 * 768
+        embedding_add_conf = torch.cat((embedding_output, torch.unsqueeze(confs, 2)))
+        embedding_output = self.linearConfMapBack(embedding_add_conf)
+
         if encoder_history_states:
             assert img_feats is None, "Cannot take image features while using encoder history states"
 
@@ -441,11 +454,11 @@ class BertForImageCaptioning(CaptionPreTrainedModel):
 
     def encode_forward(self, input_ids, img_feats, attention_mask, masked_pos, masked_ids=None, 
             token_type_ids=None, position_ids=None, head_mask=None,
-            is_training=True, encoder_history_states=None):
+            is_training=True, encoder_history_states=None, confs=None):
         outputs = self.bert(input_ids, img_feats=img_feats, attention_mask=attention_mask, 
                 position_ids=position_ids, token_type_ids=token_type_ids,
                 head_mask=head_mask,
-                encoder_history_states=encoder_history_states)
+                encoder_history_states=encoder_history_states, confs=confs)
         sequence_output = outputs[0][:, :masked_pos.shape[-1], :]
 
         if is_training:
