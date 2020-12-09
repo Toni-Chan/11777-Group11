@@ -44,6 +44,9 @@ cd Oscar/coco_caption
 cd ..
 python setup.py build develop
 
+# download pretrained models
+chmod +x get_model.sh
+
 # install requirements
 pip install -r requirements.txt
 unset INSTALL_DIR
@@ -104,6 +107,52 @@ python oscar/run_captioning_finetune.py \
     --add_od_labels \
     --keep_top_percentage_tag_conf_threshold 0.3 \
     --keep_top_percentage_tag 0.1
+
+# fine tune without image features
+python oscar/run_captioning_finetune.py \
+    --model_name_or_path pretrained_models/base-vg-labels/ep_67_588997 \
+    --do_train \
+    --do_lower_case \
+    --add_od_labels \
+    --disable_img_features \
+    --learning_rate 0.00003 \
+    --per_gpu_train_batch_size 64 \
+    --save_steps 4000 \
+    --max_steps 44000\
+    --output_dir output_img/
+
+
+
+# fine tune with confidence
+python oscar/run_captioning_add_confidence.py \
+    --model_name_or_path pretrained_models/base-vg-labels/ep_67_588997 \
+    --do_train \
+    --do_lower_case \
+    --add_od_labels \
+    --add_conf \
+    --learning_rate 0.00003 \
+    --per_gpu_train_batch_size 32 \
+    --save_steps 20 \
+    --max_steps 44000\
+    --output_dir output/
+
+python oscar/run_captioning.py \
+    --model_name_or_path pretrained_models/base-vg-labels/ep_67_588997 \
+    --do_train \
+    --do_lower_case \
+    --add_od_labels \
+    --learning_rate 0.00003 \
+    --per_gpu_train_batch_size 32 \
+    --save_steps 20 \
+    --max_steps 44000\
+    --output_dir output/
+
+# inference with objectags by confidence
+python oscar/run_captioning.py \
+    --eval_model_dir output/checkpoint-0-20 \
+    --do_eval \
+    --do_lower_case \
+    --add_od_labels
 
 # tmux command
 # exit from oscar virtualenv

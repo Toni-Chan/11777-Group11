@@ -125,9 +125,14 @@ class CaptionTSVDataset(Dataset):
 
     def get_od_confidence(self, img_idx):
         od_confs = None
+        od_labels = None
         if self.add_conf:
             label_info = json.loads(self.label_tsv.seek(img_idx)[1])
             od_confs = [l['conf'] for l in label_info]
+            od_labels = [l['class'] for l in label_info]
+            od_labels_str = " ".join([l['class'] for l in label_info])
+            #if (len(od_labels_str.split(" ")) != od_labels):
+                #print(od_labels)
         return od_confs
 
     def get_caption_file_in_coco_format(self):
@@ -234,6 +239,7 @@ class CaptionTensorizer(object):
             tokens_a = [self.tokenizer.mask_token] * (self.max_seq_a_len - 2)
         if len(tokens_a) > self.max_seq_a_len - 2:
             tokens_a = tokens_a[:(self.max_seq_a_len - 2)]
+        
 
         tokens = [self.tokenizer.cls_token] + tokens_a + [self.tokenizer.sep_token]
         segment_ids = [cls_token_segment_id] + [sequence_a_segment_id] * (len(tokens) - 1)
@@ -245,9 +251,14 @@ class CaptionTensorizer(object):
             segment_ids += ([pad_token_segment_id] * padding_a_len)
 
             tokens_b = self.tokenizer.tokenize(text_b)
+            if len(tokens_b) > self.max_seq_len - len(tokens) - 1:
+                tokens_b = tokens_b[: (self.max_seq_len - len(tokens) - 1)]
             tokens += tokens_b + [self.tokenizer.sep_token]
             segment_ids += [sequence_b_segment_id] * (len(tokens_b) + 1)
-
+            #if len(text_b.split(" ")) != len(tokens_b):
+            #    print(text_b)
+            #    print(tokens_b)
+            #    exit()
         conf_res = None
         if confs:
             # add caption portion of confidence array
@@ -256,10 +267,13 @@ class CaptionTensorizer(object):
             padding_a_len = self.max_seq_a_len - seq_a_len
             conf_res += ([0] * padding_a_len)
             # add object tag portion of confidence array
+            ## TODO: add subword -> confidence mapping
             conf_res += confs + [1]
             # padd on the right to have a fix legnth
             padding_right_len = self.max_seq_len - len(conf_res)
             conf_res += ([0] * padding_right_len)
+            #print("tag size is: "+str(len(text_b.split(" ")))+" token size is: "+str(len(tokens_b))+" conf size is: "+str(len(confs)))
+            conf_res = torch.FloatTensor(conf_res)
 
         seq_len = len(tokens)
         if self.is_train:
@@ -335,7 +349,8 @@ class CaptionTensorizer(object):
 
         input_ids = torch.tensor(input_ids, dtype=torch.long)
         segment_ids = torch.tensor(segment_ids, dtype=torch.long)
-
+        conf_res = torch.zeros_like(input_ids, dtype=torch.float)
+        print("input_ids shape: "+str(input_ids.size()) + " segment_ids shape: "+str(segment_ids.size()) + " img_feat shape: "+str(img_feat.size()) + " conf_res shape: " + str(conf_res.size()) + "masked_pos shape: "+str(masked_pos.size()))
         if self.is_train:
             masked_ids = torch.tensor(masked_ids, dtype=torch.long)
             return (input_ids, attention_mask, segment_ids, img_feat, masked_pos, masked_ids, conf_res)

@@ -11,7 +11,7 @@ from transformers.pytorch_transformers.modeling_bert import (BertEmbeddings,
         BertSelfAttention, BertAttention, BertEncoder, BertLayer, 
         BertSelfOutput, BertIntermediate, BertOutput,
         BertPooler, BertLayerNorm, BertPreTrainedModel,
-		BertPredictionHeadTransform)
+        BertPredictionHeadTransform)
 from .modeling_utils import CaptionPreTrainedModel
 from ..utils.cbs import ConstrainedBeamSearch, select_best_beam_with_constraints
 
@@ -204,11 +204,8 @@ class BertImgModel(BertPreTrainedModel):
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
         
-        if not (confs is None):
-            print("conf size passed in is: "+ confs.size())
         if confs is None:
-            confs = torch.zeros_like(input_ids)
-            print("conf size in None if is: "+ confs.size())
+            confs = torch.zeros_like(input_ids, dtype=torch.float)
 
         # We create a 3D attention mask from a 2D tensor mask.
         # Sizes are [batch_size, 1, 1, to_seq_length]
@@ -251,7 +248,7 @@ class BertImgModel(BertPreTrainedModel):
 
         # add confidence to token_embeddings change shape from batchSize * 70 * 768 -> batchSize * 70 * 769
         # then user linear layer map back to batchSize * 70 * 768
-        embedding_add_conf = torch.cat((embedding_output, torch.unsqueeze(confs, 2)))
+        embedding_add_conf = torch.cat((embedding_output, torch.unsqueeze(confs, 2)), 2)
         embedding_output = self.linearConfMapBack(embedding_add_conf)
 
         if encoder_history_states:
