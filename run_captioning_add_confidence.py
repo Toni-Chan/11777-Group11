@@ -128,11 +128,11 @@ class CaptionTSVDataset(Dataset):
         od_labels = None
         if self.add_conf:
             label_info = json.loads(self.label_tsv.seek(img_idx)[1])
-            od_confs = [l['conf'] for l in label_info]
-            od_labels = [l['class'] for l in label_info]
-            od_labels_str = " ".join([l['class'] for l in label_info])
-            #if (len(od_labels_str.split(" ")) != od_labels):
-                #print(od_labels)
+            od_confs = []
+            # we need to repeat conf because some labels have spaces
+            for idx, info in enumerate(label_info):
+                repeats = len(info["class"].strip().split(" "))
+                od_confs.append(info["conf"] * repeats)
         return od_confs
 
     def get_caption_file_in_coco_format(self):
@@ -244,13 +244,24 @@ class CaptionTensorizer(object):
         tokens = [self.tokenizer.cls_token] + tokens_a + [self.tokenizer.sep_token]
         segment_ids = [cls_token_segment_id] + [sequence_a_segment_id] * (len(tokens) - 1)
         seq_a_len = len(tokens)
+        if confs:
+            expanded_confs = []
         if text_b:
             # pad text_a to keep it in fixed length for better inference.
             padding_a_len = self.max_seq_a_len - seq_a_len
             tokens += [self.tokenizer.pad_token] * padding_a_len
             segment_ids += ([pad_token_segment_id] * padding_a_len)
 
-            tokens_b = self.tokenizer.tokenize(text_b)
+            if not confs:
+                tokens_b = self.tokenizer.tokenize(text_b)
+            else:
+                # we need to do this because tokenize can output more than one token per word
+                tokens_b = []
+                split_text_b = text_b.split(" ")
+                for idx, b in split_text_b:
+                    t = self.tokenizer.tokenize(b)
+                    tokens_b.extend(t)
+                    expanded_confs.append(confs[idx] * len(t))
             if len(tokens_b) > self.max_seq_len - len(tokens) - 1:
                 tokens_b = tokens_b[: (self.max_seq_len - len(tokens) - 1)]
             tokens += tokens_b + [self.tokenizer.sep_token]
@@ -267,8 +278,8 @@ class CaptionTensorizer(object):
             padding_a_len = self.max_seq_a_len - seq_a_len
             conf_res += ([0] * padding_a_len)
             # add object tag portion of confidence array
-            ## TODO: add subword -> confidence mapping
-            conf_res += confs + [1]
+            expanded_confs = expanded_confs[:self.max_seq_len-seq_a_len-1]
+            conf_res += expanded_confs + [1]
             # padd on the right to have a fix legnth
             padding_right_len = self.max_seq_len - len(conf_res)
             conf_res += ([0] * padding_right_len)
