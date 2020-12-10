@@ -157,7 +157,7 @@ class BertImgModel(BertPreTrainedModel):
         self.img_dim = config.img_feature_dim
         logger.info('BertImgModel Image Dimension: {}'.format(self.img_dim))
         self.img_feature_type = config.img_feature_type
-        self.linearConfMapBack = nn.Linear(769, 768, bias=False)
+        self.linearConfMapBack = nn.Linear(769, 768, bias=True)
         if hasattr(config, 'use_img_layernorm'):
             self.use_img_layernorm = config.use_img_layernorm
         else:
