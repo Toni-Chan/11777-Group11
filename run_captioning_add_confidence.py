@@ -132,7 +132,7 @@ class CaptionTSVDataset(Dataset):
             # we need to repeat conf because some labels have spaces
             for idx, info in enumerate(label_info):
                 repeats = len(info["class"].strip().split(" "))
-                od_confs.append(info["conf"] * repeats)
+                od_confs.extend([info["conf"]] * repeats)
         return od_confs
 
     def get_caption_file_in_coco_format(self):
@@ -258,10 +258,16 @@ class CaptionTensorizer(object):
                 # we need to do this because tokenize can output more than one token per word
                 tokens_b = []
                 split_text_b = text_b.split(" ")
-                for idx, b in split_text_b:
+                #if (len(confs) != len(split_text_b)):
+                    #print(split_text_b)
+                    #print(text_b)
+                    #print(len(split_text_b))
+                    #print(len(confs))
+                    #print(confs)
+                for idx, b in enumerate(split_text_b):
                     t = self.tokenizer.tokenize(b)
                     tokens_b.extend(t)
-                    expanded_confs.append(confs[idx] * len(t))
+                    expanded_confs.extend([confs[idx]] * len(t))
             if len(tokens_b) > self.max_seq_len - len(tokens) - 1:
                 tokens_b = tokens_b[: (self.max_seq_len - len(tokens) - 1)]
             tokens += tokens_b + [self.tokenizer.sep_token]
@@ -361,7 +367,7 @@ class CaptionTensorizer(object):
         input_ids = torch.tensor(input_ids, dtype=torch.long)
         segment_ids = torch.tensor(segment_ids, dtype=torch.long)
         conf_res = torch.zeros_like(input_ids, dtype=torch.float)
-        print("input_ids shape: "+str(input_ids.size()) + " segment_ids shape: "+str(segment_ids.size()) + " img_feat shape: "+str(img_feat.size()) + " conf_res shape: " + str(conf_res.size()) + "masked_pos shape: "+str(masked_pos.size()))
+        #print("input_ids shape: "+str(input_ids.size()) + " segment_ids shape: "+str(segment_ids.size()) + " img_feat shape: "+str(img_feat.size()) + " conf_res shape: " + str(conf_res.size()) + "masked_pos shape: "+str(masked_pos.size()))
         if self.is_train:
             masked_ids = torch.tensor(masked_ids, dtype=torch.long)
             return (input_ids, attention_mask, segment_ids, img_feat, masked_pos, masked_ids, conf_res)
